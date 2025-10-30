@@ -228,6 +228,36 @@ class FlutterFft {
 
     return result;
   }
+
+  /**
+   * Temporarily pauses audio processing to prevent feedback during sound playback
+   * @return Future<String> Success message
+   */
+  Future<String> pauseAudioProcessing() async {
+    String result = await _channel.invokeMethod("pauseAudioProcessing");
+    return result;
+  }
+
+  /**
+   * Resumes audio processing after pause
+   * @return Future<String> Success message
+   */
+  Future<String> resumeAudioProcessing() async {
+    String result = await _channel.invokeMethod("resumeAudioProcessing");
+    return result;
+  }
+
+  /**
+   * Convenience method to pause audio processing for a specified duration
+   * Useful for preventing feedback during sound playback
+   * @param duration Duration to pause (default 300ms)
+   * @return Future<void>
+   */
+  Future<void> pauseForDuration([Duration duration = const Duration(milliseconds: 300)]) async {
+    await pauseAudioProcessing();
+    await Future.delayed(duration);
+    await resumeAudioProcessing();
+  }
 }
 
 /**

@@ -57,6 +57,13 @@ public class PitchModel implements PitchInterface {
                 FlutterFftPlugin.frequency = pitchDetector.getPitch(floatData).getPitch();
                 // Log.d(TAG, "Frequency detected: " + FlutterFftPlugin.frequency);
 
+                // Check if audio processing is paused (e.g., during sound playback)
+                if (FlutterFftPlugin.isAudioProcessingPaused()) {
+                    // Skip processing but continue the recording loop
+                    FlutterFftPlugin.recordHandler.postDelayed(audioModel.getRecorderTicker(), audioModel.subsDurationMillis);
+                    return;
+                }
+
                 if (FlutterFftPlugin.frequency != -1) {
                     // Log.d(TAG, "Processing frequency: " + FlutterFftPlugin.frequency);
                     try {

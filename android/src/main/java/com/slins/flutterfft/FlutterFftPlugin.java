@@ -48,6 +48,9 @@ public class FlutterFftPlugin implements ActivityAware, FlutterPlugin, PluginReg
 
   public static int bufferSize;
   private boolean doneBefore = false;
+  
+  // Audio processing pause/resume functionality
+  private static volatile boolean isAudioProcessingPaused = false;
 
   public static float frequency = 0;
   public static String note = "";
@@ -213,6 +216,14 @@ public class FlutterFftPlugin implements ActivityAware, FlutterPlugin, PluginReg
         // Log.d(TAG, "requestPermission method called");
         requestPermission();
         result.success(null);
+        break;
+        
+      case "pauseAudioProcessing":
+        pauseAudioProcessing(result);
+        break;
+        
+      case "resumeAudioProcessing":
+        resumeAudioProcessing(result);
         break;
         
       default:
@@ -500,5 +511,31 @@ public class FlutterFftPlugin implements ActivityAware, FlutterPlugin, PluginReg
   public void onCancel(Object arguments) {
     // Log.d(TAG, "EventChannel onCancel called - Clearing event sink");
     eventSink = null;
+  }
+
+  /**
+   * Temporarily pauses audio processing to prevent feedback during sound playback
+   * @param result Callback to report success
+   */
+  public void pauseAudioProcessing(Result result) {
+    isAudioProcessingPaused = true;
+    result.success("Audio processing paused");
+  }
+
+  /**
+   * Resumes audio processing after pause
+   * @param result Callback to report success
+   */
+  public void resumeAudioProcessing(Result result) {
+    isAudioProcessingPaused = false;
+    result.success("Audio processing resumed");
+  }
+
+  /**
+   * Checks if audio processing is currently paused
+   * @return true if paused, false otherwise
+   */
+  public static boolean isAudioProcessingPaused() {
+    return isAudioProcessingPaused;
   }
 }
