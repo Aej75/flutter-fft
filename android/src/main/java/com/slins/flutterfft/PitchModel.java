@@ -17,47 +17,50 @@ import io.flutter.plugin.common.MethodChannel;
 import static com.slins.flutterfft.FlutterFftPlugin.TAG;
 
 public class PitchModel implements PitchInterface {
-    //ERRORS
     public static final String ERROR_PITCH_DETECTION_FAILURE = "ERROR_PITCH_DETECTION_FAILURE";
     public static final String ERROR_DATA_FAILURE = "ERROR_DATA_FAILURE";
     public static final String ERROR_FAILED_FREQUENCY_DATA_PROCESSING = "ERROR_FAILED_FREQUENCY_DATA_PROCESSING";
 
-    private float tolerance; // TOLERANCE IN HERTZ, AS IN HOW MANY HERTZ APART FROM THE PERFECT FREQUENCY THE NOTE IS TO BE CONSIDERED ON PITCH
+    private float tolerance;
     private List<Object> tuning;
     private ArrayList<Pair<String, Integer>> tuningData = new ArrayList<Pair<String, Integer>>();
     private float[] targetFrequencies = null;
     private boolean isOnPitch = false;
 
-    private PitchDetector pitchDetector; // PITCH DETECTOR VARIABLE
+    private PitchDetector pitchDetector;
 
     ArrayList<FrequencyData<String, Float, Integer>> frequencyData = new ArrayList<FrequencyData<String, Float, Integer>>();
 
+    /**
+     * Updates frequency and note detection from audio input
+     * Processes audio data to detect pitch and sends results via EventChannel
+     * @param result MethodChannel result for error handling
+     * @param audioModel Contains audio recorder and data
+     */
     @Override
     public void updateFrequencyAndNote(MethodChannel.Result result, AudioModel audioModel) {
         try {
-            if (audioModel.getAudioRecorder().getState() == AudioRecord.STATE_INITIALIZED) { // PROCEED IF THE AUDIO IS BEING RECORDED, RETURN AN ERROR OTHERWISE
-
-
-                audioModel.getAudioRecorder().read(audioModel.getAudioData(), 0, FlutterFftPlugin.bufferSize / 2); // UPDATES AUDIO BUFFER TO THE CURRENT AUDIO DATA
+            if (audioModel.getAudioRecorder().getState() == AudioRecord.STATE_INITIALIZED) {
+                audioModel.getAudioRecorder().read(audioModel.getAudioData(), 0, FlutterFftPlugin.bufferSize / 2);
 
                 parseTuning();
 
-                ArrayList<Object> returnData = new ArrayList<>(); // VARIABLE THAT WILL CONTAIN THE DATA TO BE RETURNED TO FLUTTER
+                ArrayList<Object> returnData = new ArrayList<>();
 
-                short[] bufferData = audioModel.getAudioData(); // GETTING "SHORT" BUFFER ARRAY, IN ORDER TO CONVERT IT TO A FLOAT ARRAY (FLOAT ARRAY IS WHAT THE PITCH DETECTOR TAKES AS INPUT)
-                float[] floatData = new float[FlutterFftPlugin.bufferSize / 2]; // INSTANTIATING THE FLOAT ARRAY
+                short[] bufferData = audioModel.getAudioData();
+                float[] floatData = new float[FlutterFftPlugin.bufferSize / 2];
 
-                for (int i = 0; i < bufferData.length; i++) { // MAKING THE TYPE CONVERSION
+                for (int i = 0; i < bufferData.length; i++) {
                     floatData[i] = (float) bufferData[i];
-//                    Log.d(TAG, "Data: " + floatData[i]);
                 }
 
-                FlutterFftPlugin.frequency = pitchDetector.getPitch(floatData).getPitch(); // GET DETECTED FREQUENCY FROM AUDIO
-                // Log.d(TAG, "Data: " + pitchDetector.getPitch(floatData).getPitch());
+                FlutterFftPlugin.frequency = pitchDetector.getPitch(floatData).getPitch();
+                // Log.d(TAG, "Frequency detected: " + FlutterFftPlugin.frequency);
 
-                if (FlutterFftPlugin.frequency != -1) { // PROCEED IF FREQUENCY WAS DETECTED, RETURN AN ERROR OTHERWISE
+                if (FlutterFftPlugin.frequency != -1) {
+                    // Log.d(TAG, "Processing frequency: " + FlutterFftPlugin.frequency);
                     try {
-                        processPitch(FlutterFftPlugin.frequency, result); // UPDATE NOTE FROM THE DETECTED FREQUENCY
+                        processPitch(FlutterFftPlugin.frequency, result);
                     } catch(Exception e) {
                         FlutterFftPlugin.printError("Could not process pitch", e);
                         return;
@@ -65,11 +68,11 @@ public class PitchModel implements PitchInterface {
 
                     try {
                         returnData.add(tolerance);
-                        returnData.add(FlutterFftPlugin.frequency); // ADDS FREQUENCY TO THE RETURN ARRAY
-                        returnData.add(FlutterFftPlugin.note); // ADDS NOTE TO THE RETURN ARRAY
+                        returnData.add(FlutterFftPlugin.frequency);
+                        returnData.add(FlutterFftPlugin.note);
                         returnData.add(FlutterFftPlugin.target);
                         returnData.add(FlutterFftPlugin.distance);
-                        returnData.add(FlutterFftPlugin.octave); // ADDS OCTAVE TO THE RETURN ARRAY
+                        returnData.add(FlutterFftPlugin.octave);
                         returnData.add(FlutterFftPlugin.nearestNote);
                         returnData.add(FlutterFftPlugin.nearestTarget);
                         returnData.add(FlutterFftPlugin.nearestDistance);
@@ -81,230 +84,51 @@ public class PitchModel implements PitchInterface {
                     }
 
                     try {
-                        // Log.d(TAG, "Array here: " + returnData);
-//                        result.success(1);
-                        FlutterFftPlugin.channel.invokeMethod("updateRecorderProgress", returnData); // SENDS ARRAY "returnData" BACK TO FLUTTER
+                        // Log.d(TAG, "Sending data to Flutter via EventChannel: " + returnData);
+                        
+                        // CRITICAL FIX: Use EventChannel instead of MethodChannel for streaming
+                        FlutterFftPlugin.mainHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    if (FlutterFftPlugin.eventSink != null) {
+                                        // Log.d(TAG, "EventSink is available, sending data...");
+                                        FlutterFftPlugin.eventSink.success(returnData);
+                                        // Log.d(TAG, "✅ Data sent successfully to Flutter via EventChannel");
+                                    } else {
+                                        // Log.e(TAG, "❌ EventSink is NULL! Cannot send data to Flutter");
+                                    }
+                                } catch (Exception e) {
+                                    // Log.e(TAG, "❌ Error sending data via EventChannel: " + e.getMessage(), e);
+                                    // e.printStackTrace();
+                                }
+                            }
+                        });
                     } catch (Exception err) {
-                        FlutterFftPlugin.printError("Failed to update recorder progress", err);
+                        FlutterFftPlugin.printError("Failed to post to main handler", err);
                         return;
                     }
                 }
 
-                FlutterFftPlugin.recordHandler.postDelayed(audioModel.getRecorderTicker(), audioModel.subsDurationMillis); // LOOPS THIS CODE BLOCK
+                FlutterFftPlugin.recordHandler.postDelayed(audioModel.getRecorderTicker(), audioModel.subsDurationMillis);
             } else {
-                FlutterFftPlugin.printError("Recorder is not initialized");
+                FlutterFftPlugin.printError("Recorder is not initialized. State: " + audioModel.getAudioRecorder().getState());
                 return;
-//                result.error(FlutterFftPlugin.ERROR_RECORDER_IS_NOT_INITIALIZED, "Current state: " + audioModel.getAudioRecorder().getState(), null);
             }
         } catch (Exception e) {
             FlutterFftPlugin.printError("Failed to update recorder", e);
             return;
-//            Log.d(TAG, "Error there: " + e.toString());
-//            result.error(FlutterFftPlugin.ERROR_FAILED_RECORDER_UPDATE, "Failed to update recorder: " + e.toString(), null);
         }
     }
 
-//    @Override
-//    public void processPitch(float pitchInHz, MethodChannel.Result result) { // GET NOTE AND OCTAVE FROM PITCH (IN HZ)
-//        if (tuning[0] != "None") {
-//            float smallestDistance = Float.MAX_VALUE;
-//            float secondSmallestDistance = Float.MAX_VALUE;
-//
-//            for (FrequencyData<String, Float, Integer> data : frequencyData) {
-//                for (int i = 0; i < targetFrequencies.length; i++) {
-//                    float currentDistance = pitchInHz - targetFrequencies[i];
-//                    if (currentDistance < tolerance) {
-//                        smallestDistance = currentDistance;
-//                        FlutterFftPlugin.note = tuningData.get(i).first;
-//                        FlutterFftPlugin.distance = smallestDistance;
-//                        FlutterFftPlugin.target = targetFrequencies[i];
-//                        FlutterFftPlugin.octave = tuningData.get(i).second;
-//                        isOnPitch = true;
-//                        int dataIndex = frequencyData.indexOf(data);
-//                        if (dataIndex != 0 && dataIndex != frequencyData.size() - 1) {
-//                            float dist1 = Math.abs(pitchInHz - frequencyData.get(dataIndex - 1).second);
-//                            float dist2 = Math.abs(pitchInHz - frequencyData.get(dataIndex + 1).second);
-//                            if (dist1 > dist2) {
-//                                secondSmallestDistance = dist2;
-//                                FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex + 1).first;
-//                                FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                                FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex + 1).second;
-//                                FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex + 1).third;
-//                            } else if (dist1 < dist2) {
-//                                secondSmallestDistance = dist1;
-//                                FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex - 1).first;
-//                                FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                                FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex - 1).second;
-//                                FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex - 1).third;
-//                            } else {
-//                                result.error(ERROR_FAILED_FREQUENCY_DATA_PROCESSING, "Could not properly set up the frequency data, dist1: " + dist1 + " | " + "dist2: " + dist2, null);
-//                            }
-//                        }
-//                        return;
-//                    }
-//                }
-//            }
-//
-//            for (FrequencyData<String, Float, Integer> data : frequencyData) {
-//                float currentDistance = Math.abs(pitchInHz - data.second);
-//                if (currentDistance < tolerance) {
-//                    smallestDistance = currentDistance;
-//                    FlutterFftPlugin.note = data.first;
-//                    FlutterFftPlugin.distance = smallestDistance;
-//                    FlutterFftPlugin.target = data.second;
-//                    FlutterFftPlugin.octave = data.third;
-//                    isOnPitch = true;
-//                    int dataIndex = frequencyData.indexOf(data);
-//                    if (dataIndex != 0 && dataIndex != frequencyData.size() - 1) {
-//                        float dist1 = Math.abs(pitchInHz - frequencyData.get(dataIndex - 1).second);
-//                        float dist2 = Math.abs(pitchInHz - frequencyData.get(dataIndex + 1).second);
-//                        if (dist1 > dist2) {
-//                            secondSmallestDistance = dist2;
-//                            FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex + 1).first;
-//                            FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                            FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex + 1).second;
-//                            FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex + 1).third;
-//                        }
-//                        else if(dist1 < dist2) {
-//                            secondSmallestDistance = dist1;
-//                            FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex - 1).first;
-//                            FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                            FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex - 1).second;
-//                            FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex - 1).third;
-//                        }
-//                        else {
-//                            result.error(ERROR_FAILED_FREQUENCY_DATA_PROCESSING, "Could not properly set up the frequency data, dist1: " + dist1 + " | " + "dist2: " + dist2,null);
-//                        }
-//                    }
-//                    return;
-//                } else if (currentDistance > tolerance) {
-//                    isOnPitch = false;
-//
-//                    if (currentDistance < smallestDistance) {
-//                        smallestDistance = currentDistance;
-//                    } else if (currentDistance > smallestDistance) {
-//
-//                    }
-//                }
-//            }
-//        }
-//                else if (currentDistance > tolerance) {
-//                    isOnPitch = false;
-//
-//                    if (currentDistance < smallestDistance) {
-//                        smallestDistance = currentDistance;
-//                    } else if (currentDistance > smallestDistance) {
-//                        int dataIndex = frequencyData.indexOf(data) - 1;
-//                        FlutterFftPlugin.note = data.first;
-//                        FlutterFftPlugin.distance = smallestDistance;
-//                        FlutterFftPlugin.target = data.second;
-//                        FlutterFftPlugin.octave = data.third;
-//
-//                        if (dataIndex != 0 && dataIndex != frequencyData.size() - 1) {
-//                            float dist1 = Math.abs(pitchInHz - frequencyData.get(dataIndex - 1).second);
-//                            float dist2 = Math.abs(pitchInHz - frequencyData.get(dataIndex + 1).second);
-//                            if (dist1 > dist2) {
-//                                secondSmallestDistance = dist2;
-//                                FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex + 1).first;
-//                                FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                                FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex + 1).second;
-//                                FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex + 1).third;
-//                            }
-//                            else if(dist1 < dist2) {
-//                                secondSmallestDistance = dist1;
-//                                FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex - 1).first;
-//                                FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                                FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex - 1).second;
-//                                FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex - 1).third;
-//                            }
-//                            else {
-//                                result.error(ERROR_FAILED_FREQUENCY_DATA_PROCESSING, "Could not properly set up the frequency data, dist1: " + dist1 + " | " + "dist2: " + dist2,null);
-//                            }
-//                        }
-//                        return;
-//                    }
-//                }
-//            }
-//        }
-//
-//        else {
-//            float smallestDistance = Float.MAX_VALUE;
-//            float secondSmallestDistance = Float.MAX_VALUE;
-//
-//            for (FrequencyData<String, Float, Integer> data : frequencyData) {
-//                float currentDistance = Math.abs(pitchInHz - data.second);
-//                if (currentDistance < tolerance) {
-//                    smallestDistance = currentDistance;
-//                    FlutterFftPlugin.note = data.first;
-//                    FlutterFftPlugin.distance = smallestDistance;
-//                    FlutterFftPlugin.target = data.second;
-//                    FlutterFftPlugin.octave = data.third;
-//                    isOnPitch = true;
-//                    int dataIndex = frequencyData.indexOf(data);
-//                    if (dataIndex != 0 && dataIndex != frequencyData.size() - 1) {
-//                        float dist1 = Math.abs(pitchInHz - frequencyData.get(dataIndex - 1).second);
-//                        float dist2 = Math.abs(pitchInHz - frequencyData.get(dataIndex + 1).second);
-//                        if (dist1 > dist2) {
-//                            secondSmallestDistance = dist2;
-//                            FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex + 1).first;
-//                            FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                            FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex + 1).second;
-//                            FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex + 1).third;
-//                        }
-//                        else if(dist1 < dist2) {
-//                            secondSmallestDistance = dist1;
-//                            FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex - 1).first;
-//                            FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                            FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex - 1).second;
-//                            FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex - 1).third;
-//                        }
-//                        else {
-//                            result.error(ERROR_FAILED_FREQUENCY_DATA_PROCESSING, "Could not properly set up the frequency data, dist1: " + dist1 + " | " + "dist2: " + dist2,null);
-//                        }
-//                    }
-//                    return;
-//                } else if (currentDistance > tolerance) {
-//                    isOnPitch = false;
-//
-//                    if (currentDistance < smallestDistance) {
-//                        smallestDistance = currentDistance;
-//                    } else if (currentDistance > smallestDistance){
-//                        int dataIndex = frequencyData.indexOf(data) - 1;
-//                        FlutterFftPlugin.note = data.first;
-//                        FlutterFftPlugin.distance = smallestDistance;
-//                        FlutterFftPlugin.target = data.second;
-//                        FlutterFftPlugin.octave = data.third;
-//
-//                        if (dataIndex != 0 && dataIndex != frequencyData.size() - 1) {
-//                            float dist1 = Math.abs(pitchInHz - frequencyData.get(dataIndex - 1).second);
-//                            float dist2 = Math.abs(pitchInHz - frequencyData.get(dataIndex + 1).second);
-//                            if (dist1 > dist2) {
-//                                secondSmallestDistance = dist2;
-//                                FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex + 1).first;
-//                                FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                                FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex + 1).second;
-//                                FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex + 1).third;
-//                            }
-//                            else if(dist1 < dist2) {
-//                                secondSmallestDistance = dist1;
-//                                FlutterFftPlugin.nearestNote = frequencyData.get(dataIndex - 1).first;
-//                                FlutterFftPlugin.nearestDistance = secondSmallestDistance;
-//                                FlutterFftPlugin.nearestTarget = frequencyData.get(dataIndex - 1).second;
-//                                FlutterFftPlugin.nearestOctave = frequencyData.get(dataIndex - 1).third;
-//                            }
-//                            else {
-//                                result.error(ERROR_FAILED_FREQUENCY_DATA_PROCESSING, "Could not properly set up the frequency data, dist1: " + dist1 + " | " + "dist2: " + dist2,null);
-//                            }
-//                        }
-//                        return;
-//                    }
-//                }
-//            }
-//        }
-//    }
-
+    /**
+     * Processes detected pitch frequency to determine note and tuning accuracy
+     * Calculates closest note, octave, and distance from target frequency
+     * @param pitchInHz The detected frequency in Hz
+     * @param result MethodChannel result for error handling
+     */
     @Override
-    public void processPitch(float pitchInHz, MethodChannel.Result result) { // GET NOTE AND OCTAVE FROM PITCH (IN HZ)
+    public void processPitch(float pitchInHz, MethodChannel.Result result) {
         if (tuning.get(0) != "None") {
             float smallestTargetDistance = Float.MAX_VALUE;
             float smallestCurrentDistance = Float.MAX_VALUE;
@@ -320,7 +144,7 @@ public class PitchModel implements PitchInterface {
             }
 
             float currentDistance = smallestTargetDistance;
-            //targetIdx = Math.abs(targetIdx);
+            
             if (currentDistance < tolerance) {
                 FlutterFftPlugin.note = tuningData.get(targetIdx).first;
                 FlutterFftPlugin.distance = currentDistance;
@@ -344,19 +168,12 @@ public class PitchModel implements PitchInterface {
                     }
                 }
 
-//                for (int i = 0; i < frequencyData.size(); i++) {
-//                    float curDistance = Math.abs(pitchInHz -)
-//                }
-
-//                Log.d(TAG, "Target: " + targetIdx + " | Current: " + currentIdx);
-
                 FlutterFftPlugin.note = frequencyData.get(currentIdx).first;
                 FlutterFftPlugin.octave = frequencyData.get(currentIdx).third;
 
                 FlutterFftPlugin.nearestNote = tuningData.get(targetIdx).first;
                 FlutterFftPlugin.nearestDistance = FlutterFftPlugin.distance;
                 FlutterFftPlugin.nearestOctave = tuningData.get(targetIdx).second;
-
                 FlutterFftPlugin.nearestTarget = targetFrequencies[targetIdx];
                 return;
             }
@@ -392,7 +209,6 @@ public class PitchModel implements PitchInterface {
                         } else {
                             FlutterFftPlugin.printError("Could not properly set up the frequency data");
                             return;
-//                            result.error(ERROR_FAILED_FREQUENCY_DATA_PROCESSING, "Could not properly set up the frequency data, dist1: " + dist1 + " | " + "dist2: " + dist2, null);
                         }
                     }
                     return;
@@ -438,6 +254,12 @@ public class PitchModel implements PitchInterface {
         }
     }
 
+    /**
+     * Generates frequency data for all musical notes across octaves
+     * Creates reference frequencies for pitch detection and tuning
+     * Uses A4 = 440Hz as the standard tuning reference
+     * @param result MethodChannel result for error handling
+     */
     @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     public void getFrequenciesAndOctaves(MethodChannel.Result result) {
@@ -497,7 +319,6 @@ public class PitchModel implements PitchInterface {
         });
     }
 
-
     public void setPitchDetector(PitchDetector pitchDetector) {
         this.pitchDetector = pitchDetector;
     }
@@ -510,6 +331,10 @@ public class PitchModel implements PitchInterface {
         this.tuning = tuning;
     }
 
+    /**
+     * Parses tuning configuration and generates target frequencies
+     * Converts string notation (e.g., "E4", "A#3") to frequency values
+     */
     public void parseTuning() {
         tuningData = new ArrayList<Pair<String, Integer>>();
 
@@ -521,7 +346,6 @@ public class PitchModel implements PitchInterface {
                 else if (tuning.get(i).toString().length() == 3) {
                     tuningData.add(new Pair<String, Integer>(Character.toString(tuning.get(i).toString().charAt(0)) + tuning.get(i).toString().charAt(1), (int) tuning.get(i).toString().charAt(2) - 50 + 2));
                 }
-
             }
 
             targetFrequencies = new float[tuningData.size()];
