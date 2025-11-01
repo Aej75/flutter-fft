@@ -3,16 +3,30 @@
 ### Plugin at pub-dev
 <https://pub.dev/packages/flutter_fft>
 
-**Warning:** *Currently works only on Android! This plugin makes use of platform channels, and only the Java/Android platform channel has been implemented.*
+**Platform Support:** *Works on both Android and iOS! This plugin makes use of platform channels with native implementations for both platforms.*
 
-**The plugin was developed in a Pixel 2 emulator, API 29. Tested in a real Pixel 2, Android 11 and another Pixel 2 emulator, API 30. Does not work on iOS at the moment, due to the platform channel having yet to be implemented.**
+**Android:** Developed and tested on Pixel 2 emulator (API 29), real Pixel 2 (Android 11), and Pixel 2 emulator (API 30).
+**iOS:** Implemented using native AVFoundation and Accelerate frameworks for optimal performance.
 
+## Setup Requirements
+
+### Android
 **Minimum SDK version >= 24**: You can update the minimum SDK requirements at `"/android/app/build.gradle"` in the line `minSdkVersion 16` of your main application.
 
-The following needs to be added to your project's `"android/app/src/main/AndroidManifest.xml"`:
+Add the following permission to your project's `"android/app/src/main/AndroidManifest.xml"`:
 
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
+```
+
+### iOS
+**Minimum iOS version >= 9.0**
+
+Add the following permission to your project's `"ios/Runner/Info.plist"`:
+
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>This app needs access to microphone for real-time pitch detection and audio analysis.</string>
 ```
 
 This is my first (and currently only) Flutter plugin and Java project.
@@ -177,7 +191,7 @@ This is the variable responsible for estabilishing a connection between Dart and
 
 ### Todo
 
-- iOS version;
+- ✅ iOS version - **COMPLETED!** Using native AVFoundation and Accelerate frameworks
 - Separate call handling logic;
 - Improve performance, by rewriting code and/or writing native flutter/dart pitch detection;
 - Improve accuracy/outliers, some frequencies are way off;
