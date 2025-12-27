@@ -253,7 +253,8 @@ class FlutterFft {
    * @param duration Duration to pause (default 300ms)
    * @return Future<void>
    */
-  Future<void> pauseForDuration([Duration duration = const Duration(milliseconds: 300)]) async {
+  Future<void> pauseForDuration(
+      [Duration duration = const Duration(milliseconds: 300)]) async {
     await pauseAudioProcessing();
     await Future.delayed(duration);
     await resumeAudioProcessing();
